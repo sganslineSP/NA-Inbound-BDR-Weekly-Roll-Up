@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NA Inbound BDR Performance Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals with Subtle Accents -->
+    <!-- Application Structure Plan: A top-down dashboard structure was chosen to guide leadership from high-level executive summary metrics to more granular deep dives. The core interaction is a 'Last Week' vs. 'Last 30 Days' toggle, which updates all relevant visualizations and KPIs. The flow is: 1. Overall Performance KPIs. 2. Funnel Performance Table. 3. Lead Source Effectiveness Table. 4. AE Handoff Analysis Chart. This logical progression from 'what' to 'why' makes the data story easy to follow and digest for a busy executive audience. -->
+    <!-- Visualization & Content Choices: 
+        - Top-Line Funnel: Goal: Inform. Method: Large stat cards for key % vs. Target metrics.
+        - Funnel Performance: Goal: Inform. Method: Interactive HTML Table showing volume, target, and vs. target for each funnel stage. Interaction: Updates on time-period toggle. Justification: A table provides a more precise and scannable view of performance against specific targets than a chart.
+        - Lead Source Performance: Goal: Compare. Method: Static HTML Table showing MQLs, SQLs, SQOs, and conversion rates by source. Justification: A table allows for easy comparison of both volume and efficiency metrics across different channels.
+        - AE Handoff: Goal: Compare/Organize. Method: Horizontal Grouped Bar Chart (Chart.js) showing SQLs vs. SQOs per AE. Interaction: Updates with time-period toggle. Justification: A chart is still best here to visually expose the conversion gaps between AEs, which is a key strategic insight.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f7f4;
+            color: #3d3d3d;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 350px;
+            max-height: 40vh;
+        }
+        @media (max-width: 768px) {
+            .chart-container {
+                height: 300px;
+                max-height: 50vh;
+            }
+        }
+        .kpi-card {
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+            transition: transform 0.2s ease-in-out;
+        }
+        .kpi-card:hover {
+            transform: translateY(-4px);
+        }
+        .toggle-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            border: 1px solid transparent;
+        }
+        .toggle-btn.active {
+            background-color: #3d3d3d;
+            color: #ffffff;
+            box-shadow: 0 2px 4px -1px rgb(0 0 0 / 0.1);
+        }
+        .toggle-btn.inactive {
+            background-color: #ffffff;
+            color: #3d3d3d;
+            border: 1px solid #e2e8f0;
+        }
+        .table-wrapper {
+            overflow-x: auto;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .data-table th, .data-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .data-table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: #4a5568;
+        }
+        .data-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body class="antialiased">
+
+    <div class="container mx-auto p-4 md:p-8">
+
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800">NA Inbound BDR Performance Roll-Up</h1>
+            <p id="reportDate" class="text-lg text-gray-500 mt-2">Week of July 28 - Aug 3, 2025</p>
+        </header>
+
+        <main class="space-y-12">
+            
+            <section id="executive-summary" class="bg-white rounded-xl shadow-sm p-6 md:p-8">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">Executive Summary & KPIs</h2>
+                        <p class="text-gray-600 mt-1">Key performance indicators showing overall team performance against targets.</p>
+                    </div>
+                    <div id="time-period-toggle" class="flex items-center space-x-2 mt-4 md:mt-0 bg-gray-100 p-1 rounded-lg">
+                        <button data-period="lastWeek" class="toggle-btn active">Last Week</button>
+                        <button data-period="last30Days" class="toggle-btn inactive">Last 30 Days</button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div class="kpi-card">
+                        <h3 class="text-gray-500 font-medium">SQOs vs. Target</h3>
+                        <p id="sqo-vs-target" class="text-4xl font-bold mt-2"></p>
+                        <p id="sqo-actual" class="text-gray-500"></p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3 class="text-gray-500 font-medium">Forecasted MRR vs. Target</h3>
+                        <p id="mrr-vs-target" class="text-4xl font-bold mt-2"></p>
+                        <p id="mrr-actual" class="text-gray-500"></p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3 class="text-gray-500 font-medium">MQL → SQL Rate</h3>
+                        <p id="mql-to-sql-rate" class="text-4xl font-bold mt-2"></p>
+                        <p id="mql-to-sql-goal" class="text-gray-500"></p>
+                    </div>
+                    <div class="kpi-card">
+                        <h3 class="text-gray-500 font-medium">SQL → SQO Rate</h3>
+                        <p id="sql-to-sqo-rate" class="text-4xl font-bold mt-2"></p>
+                        <p id="sql-to-sqo-goal" class="text-gray-500"></p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="funnel-performance">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Funnel Performance</h2>
+                    <p class="text-gray-600 mt-1">This table shows the volume of leads moving through the qualification funnel. Use the toggle above to switch between weekly and 30-day views.</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm p-4 table-wrapper">
+                    <table id="funnel-table" class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Metric</th>
+                                <th>Volume</th>
+                                <th>Target</th>
+                                <th>vs. Target</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="lead-source-performance">
+                 <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">Lead Source Performance (Last 30 Days)</h2>
+                    <p class="text-gray-600 mt-1">This table breaks down the volume and pipeline contribution of our main lead sources, highlighting which channels are most efficient at generating qualified opportunities.</p>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm p-4 table-wrapper">
+                    <table id="lead-source-table" class="data-table">
+                         <thead>
+                            <tr>
+                                <th>Lead Source</th>
+                                <th>MQLs</th>
+                                <th>SQLs</th>
+                                <th>SQOs</th>
+                                <th>MQL → SQO Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="ae-performance">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">AE Handoff Performance</h2>
+                    <p class="text-gray-600 mt-1">This chart compares the Sales Qualified Leads (SQLs) each AE received versus the Sales Qualified Opps (SQOs) they created, revealing conversion effectiveness.</p>
+                </div>
+                <div class="chart-container bg-white rounded-xl shadow-sm p-4">
+                    <canvas id="aePerformanceChart"></canvas>
+                </div>
+            </section>
+            
+            <section id="strategic-initiatives" class="bg-white rounded-xl shadow-sm p-6 md:p-8">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Key Takeaways & Strategic Initiatives</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-700 mb-3">Wins & Challenges</h3>
+                        <ul class="space-y-4">
+                            <li class="flex items-start">
+                                <span class="text-green-500 mr-3 mt-1">▲</span>
+                                <div><strong class="font-semibold">Massive Over-performance:</strong> Huge win on SQO (191%) and MRR (131%) targets for the week.</div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-green-500 mr-3 mt-1">▲</span>
+                                <div><strong class="font-semibold">Potent Rewarm Program:</strong> The "Outbound - Rewarm" program is our most efficient pipeline source, converting at over 100%.</div>
+                            </li>
+                            <li class="flex items-start">
+                                <span class="text-red-500 mr-3 mt-1">▼</span>
+                                <div><strong class="font-semibold">MQL Conversion Dip:</strong> The MQL-to-SQL rate dipped below average, requiring partnership with marketing to investigate.</div>
+                            </li>
+                             <li class="flex items-start">
+                                <span class="text-red-500 mr-3 mt-1">▼</span>
+                                <div><strong class="font-semibold">Inconsistent AE Conversion:</strong> Significant variance exists in SQL-to-SQO conversion rates across AEs.</div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-700 mb-3">Action Plan</h3>
+                        <ol class="list-decimal list-inside space-y-3 text-gray-600">
+                            <li><strong class="font-semibold text-gray-700">Launch Peer-to-Peer AE Session:</strong> Organize a session led by top-performing AEs (Andrew B., Jake S.) to share best practices on SQL conversion.</li>
+                            <li><strong class="font-semibold text-gray-700">Analyze MQL Quality:</strong> Work with Marketing Ops to diagnose the MQL conversion drop and refine lead scoring.</li>
+                            <li><strong class="font-semibold text-gray-700">Double Down on Rewarm:</strong> Allocate additional BDR resources to the "Outbound - Rewarm" program to capitalize on its high efficiency.</li>
+                        </ol>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        const dataStore = {
+            kpis: {
+                lastWeek: {
+                    sqoVsTarget: 1.9178, mrrVsTarget: 1.3071,
+                    mqlToSqlRate: 0.28, sqlToSqoRate: 1.94,
+                    sqoActual: '35 / 18.25', mrrActual: '$19,443 / $14,875',
+                    mqlToSqlGoal: 'vs 32% Goal', sqlToSqoGoal: 'vs 80% Goal'
+                },
+                last30Days: {
+                    sqoVsTarget: 1.1370, mrrVsTarget: 0.9655,
+                    mqlToSqlRate: 0.34, sqlToSqoRate: 0.86,
+                    sqoActual: '83 / 73', mrrActual: '$57,448 / $59,500',
+                    mqlToSqlGoal: 'vs 32% Goal', sqlToSqoGoal: 'vs 80% Goal'
+                }
+            },
+            funnel: {
+                lastWeek: [
+                    { metric: 'MQLs Received', volume: 64, target: 73 },
+                    { metric: 'SQLs Created', volume: 18, target: 21 },
+                    { metric: 'SQOs Created', volume: 35, target: 18.25 }
+                ],
+                last30Days: [
+                    { metric: 'MQLs Received', volume: 285, target: 291 },
+                    { metric: 'SQLs Created', volume: 96, target: 82 },
+                    { metric: 'SQOs Created', volume: 83, target: 73 }
+                ]
+            },
+            leadSources: [
+                { source: 'Digital (SEO, PPC, Social)', mqls: 255, sqls: 86, sqos: 60, rate: 23.53 },
+                { source: 'Traditional (Webinars, Events)', mqls: 9, sqls: 5, sqos: 6, rate: 66.67 },
+                { source: 'Outbound - Rewarm', mqls: 13, sqls: 4, sqos: 14, rate: 107.69 }
+            ],
+            aePerformance: {
+                lastWeek: {
+                    labels: ['Joey C.', 'Aubrey K.', 'Andrew B.', 'Jake S.', 'Chris K.', 'Liam F.'],
+                    sqls: [7, 5, 3, 3, 2, 2],
+                    sqos: [5, 2, 3, 3, 0, 0],
+                    rates: [71.4, 40.0, 100.0, 100.0, 0.0, 0.0]
+                },
+                last30Days: {
+                    labels: ['Chris K.', 'Joey C.', 'Jake S.', 'Andrew B.', 'Aubrey K.', 'Liam F.'],
+                    sqls: [29, 24, 17, 22, 22, 2],
+                    sqos: [15, 13, 11, 13, 13, 0],
+                    rates: [51.7, 54.2, 64.7, 59.1, 59.1, 0.0]
+                }
+            }
+        };
+
+        let aePerformanceChart;
+        let currentPeriod = 'lastWeek';
+        
+        const chartConfig = {
+            plugins: {
+                legend: { position: 'top', labels: { font: { family: 'Inter', size: 12 }, color: '#4A5568' } },
+                tooltip: { enabled: true, backgroundColor: '#3d3d3d', titleFont: { family: 'Inter', weight: 'bold', size: 14 }, bodyFont: { family: 'Inter', size: 12 }, padding: 10, cornerRadius: 4, displayColors: true, boxPadding: 4 }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#E2E8F0' }, ticks: { font: { family: 'Inter', size: 12 }, color: '#4A5568' } },
+                x: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 12 }, color: '#4A5568', maxRotation: 0, autoSkip: false, callback: function(value) { const label = this.getLabelForValue(value); return label.length > 16 ? label.slice(0, 16) + '...' : label; } } }
+            },
+            responsive: true,
+            maintainAspectRatio: false
+        };
+
+        function formatPercent(value, withColor = false) {
+            const color = value >= 1 ? 'text-green-600' : 'text-red-600';
+            const formatted = `${(value * 100).toFixed(1)}%`;
+            return withColor ? `<span class="${color}">${formatted}</span>` : formatted;
+        }
+        
+        function formatTrend(current, trendChar) {
+            const trend = trendChar === '📈' ? '▲' : '▼';
+            const color = trendChar === '📈' ? 'text-green-500' : 'text-red-500';
+            return `<span class="${color} text-2xl">${trend}</span> ${formatPercent(current)}`;
+        }
+
+        function updateKpis(period) {
+            const data = dataStore.kpis[period];
+            document.getElementById('sqo-vs-target').innerHTML = formatPercent(data.sqoVsTarget, true);
+            document.getElementById('sqo-actual').textContent = `(${data.sqoActual})`;
+            
+            document.getElementById('mrr-vs-target').innerHTML = formatPercent(data.mrrVsTarget, true);
+            document.getElementById('mrr-actual').textContent = `(${data.mrrActual})`;
+            
+            document.getElementById('mql-to-sql-rate').innerHTML = formatTrend(data.mqlToSqlRate, period === 'lastWeek' ? '📉' : '📈');
+            document.getElementById('mql-to-sql-goal').textContent = data.mqlToSqlGoal;
+            
+            document.getElementById('sql-to-sqo-rate').innerHTML = formatTrend(data.sqlToSqoRate, period === 'lastWeek' ? '📈' : '📉');
+            document.getElementById('sql-to-sqo-goal').textContent = data.sqlToSqoGoal;
+        }
+        
+        function populateFunnelTable(period) {
+            const tableBody = document.querySelector('#funnel-table tbody');
+            const data = dataStore.funnel[period];
+            tableBody.innerHTML = '';
+            data.forEach(item => {
+                const vsTarget = item.volume / item.target;
+                const row = `
+                    <tr>
+                        <td class="font-medium">${item.metric}</td>
+                        <td>${item.volume}</td>
+                        <td>${item.target.toLocaleString()}</td>
+                        <td>${formatPercent(vsTarget, true)}</td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        function populateLeadSourceTable() {
+            const tableBody = document.querySelector('#lead-source-table tbody');
+            const data = dataStore.leadSources;
+            tableBody.innerHTML = '';
+            data.forEach(item => {
+                const row = `
+                    <tr>
+                        <td class="font-medium">${item.source}</td>
+                        <td>${item.mqls}</td>
+                        <td>${item.sqls}</td>
+                        <td>${item.sqos}</td>
+                        <td class="font-semibold ${item.rate > 50 ? 'text-green-600' : 'text-gray-700'}">${item.rate.toFixed(1)}%</td>
+                    </tr>
+                `;
+                tableBody.innerHTML += row;
+            });
+        }
+
+        function createAePerformanceChart() {
+            const ctx = document.getElementById('aePerformanceChart').getContext('2d');
+            aePerformanceChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [
+                        { label: 'SQLs Received', data: [], backgroundColor: '#a5b4fc', borderRadius: 4 },
+                        { label: 'SQOs Created', data: [], backgroundColor: '#4338ca', borderRadius: 4 }
+                    ]
+                },
+                options: { ...chartConfig, indexAxis: 'y',
+                     plugins: { ...chartConfig.plugins, tooltip: { ...chartConfig.plugins.tooltip,
+                             callbacks: { afterLabel: function(context) { if (context.dataset.label === 'SQOs Created') { const data = dataStore.aePerformance[currentPeriod]; const rate = data.rates[context.dataIndex]; return `SQL→SQO Rate: ${rate.toFixed(1)}%`; } } }
+                        }
+                    },
+                    scales: { x: { beginAtZero: true, grid: { color: '#E2E8F0' }, ticks: { font: { family: 'Inter', size: 12 }, color: '#4A5568' } }, y: { grid: { display: false }, ticks: { font: { family: 'Inter', size: 12 }, color: '#4A5568' } } }
+                }
+            });
+        }
+
+        function updateAePerformanceChart(period) {
+            const data = dataStore.aePerformance[period];
+            aePerformanceChart.data.labels = data.labels;
+            aePerformanceChart.data.datasets[0].data = data.sqls;
+            aePerformanceChart.data.datasets[1].data = data.sqos;
+            aePerformanceChart.update();
+        }
+
+        function updateDashboard(period) {
+            currentPeriod = period;
+            updateKpis(period);
+            populateFunnelTable(period);
+            updateAePerformanceChart(period);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            populateLeadSourceTable();
+            createAePerformanceChart();
+            updateDashboard(currentPeriod);
+
+            const toggleButtons = document.querySelectorAll('#time-period-toggle .toggle-btn');
+            toggleButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const selectedPeriod = button.dataset.period;
+                    if (selectedPeriod !== currentPeriod) {
+                        updateDashboard(selectedPeriod);
+                        toggleButtons.forEach(btn => {
+                            btn.classList.toggle('active', btn.dataset.period === selectedPeriod);
+                            btn.classList.toggle('inactive', btn.dataset.period !== selectedPeriod);
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
